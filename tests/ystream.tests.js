@@ -23,8 +23,12 @@ const owner = buffer.toBase64(helpers.owner)
  */
 export const testYdocLoad = async tc => {
   const collectionName = tc.testName
+  console.log('@@@ testYdocLoad 01: ', collectionName)
+  // 把`.test_dbs/testYdocLoad/`路径下的db文件删除掉
   await Ystream.remove(getDbName(tc.testName))
+  // 重新在`.test_dbs/testYdocLoad/`路径下创建数据库
   const ystream = await Ystream.open(getDbName(tc.testName))
+  // collection是什么??
   const collection = ystream.getCollection(owner, collectionName)
   const ydoc1 = collection.getYdoc('ydoc')
   await ydoc1.whenLoaded

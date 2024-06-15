@@ -17,10 +17,15 @@ const instances = new Map()
  * @param {t.TestCase} tc
  */
 const createTestDb = async tc => {
+  // 初始化instances里tc.testName key所对应的value为空数组
   const testInstances = map.setIfUndefined(instances, tc.testName, () => /** @type {any} */ ([]))
   const dbname = `./.test_dbs/${tc.moduleName}-${tc.testName}-${testInstances.length}`
+  console.log('INVOKE createTestDb, dbname: ', dbname)
+  // 删除dbname路径下的数据库
   await Ystream.remove(dbname)
+  // 重新在dbname路径下创建数据库
   const y = await Ystream.open(dbname)
+  // 这个代码应该有问题吧☠️
   testInstances.push(testInstances)
   return y
 }
@@ -30,6 +35,7 @@ const createTestDb = async tc => {
  */
 export const testGenerateAuth = async _tc => {
   const userObject = await authentication.createUserIdentity({ extractable: true })
+  // 相当于把公钥/私钥都转成可序列化的JWK格式，把UserIdentity对象也进行序列化编码
   const [publicKey, privateKey, user] = await promise.all([
     ecdsa.exportKeyJwk(userObject.publicKey),
     ecdsa.exportKeyJwk(userObject.privateKey),

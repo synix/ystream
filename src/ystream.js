@@ -114,11 +114,11 @@ export class Ystream extends ObservableV2 {
    */
   constructor (dbname, _db, clientid, user, deviceClaim, { comms = [], acceptNewUsers = false, syncsEverything = false } = {}) {
     super()
-    this.dbname = dbname
+    this.dbname = dbname   // 代表数据库名称
     /**
      * @type {isodb.IDB<typeof db.def>}
      */
-    this._db = _db
+    this._db = _db   // 代表数据库实例
     this.acceptNewUsers = acceptNewUsers
     /**
      * @type {Map<string,Map<string,Collection>>}

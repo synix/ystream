@@ -188,6 +188,8 @@ export const createDb = dbname =>
       .then(({ publicKey, privateKey }) => ecdsa.exportKeyJwk(publicKey)
         .then(publicKeyJwk => /** @type {[CryptoKey, CryptoKey, string]} */ ([publicKey, privateKey, json.stringify(publicKeyJwk)])))
   ]).then(([idb, [publicDeviceKey, privateDeviceKey, publicDeviceKeyJwk]]) =>
+    // idb为isodb.openDB()所返回的数据库实例
+    // publicDeviceKey,privateDeviceKey是生成的公钥和私钥, publicDeviceKeyJwk是公钥的JWK格式
     idb.transact(async tr => {
       const version = await tr.objects.db.get('version')
       let isAuthenticated = false
@@ -203,13 +205,17 @@ export const createDb = dbname =>
        * @type {dbtypes.DeviceClaim|null}
        */
       let deviceClaim = null
+      // 如果数据库里还未设置过version
       if (version == null) {
         // @todo derive clientid from deviceid
         clientid = random.uint32()
         // init
+        // 将db.version初始化为0
         tr.objects.db.set('version', 0)
         const dguid = new Uint8Array(64)
+        // 通过Crypto.getRandomValues()给dguid生成随机值
         webcrypto.getRandomValues(dguid)
+        // 将除claim之外的device字段进行初始化
         await promise.all([
           tr.objects.device.set('clientid', clientid),
           tr.objects.device.set('private', privateDeviceKey),
@@ -217,7 +223,9 @@ export const createDb = dbname =>
           tr.objects.device.set('identity', new dbtypes.DeviceIdentity(publicDeviceKeyJwk))
         ])
       } else if ((deviceClaim = await tr.objects.device.get('claim'))) {
+        // 如果device.claim有值, 则isAuthenticated为true
         isAuthenticated = true
+        // 获取user.identity的值
         user = await tr.objects.user.get('identity')
         // @todo remove
         if (user == null) throw new Error('user should be defined')

@@ -19,12 +19,15 @@ import * as sha256 from 'lib0/hash/sha256'
  * @param {dbtypes.UserIdentity} userIdentity
  * @param {CryptoKey} publicKey
  * @param {CryptoKey|null} privateKey
+ * 
+ * 给YStream对象设置一一对应的UserIdentity对象
  */
 export const setUserIdentity = async (ystream, userIdentity, publicKey, privateKey) => {
   const deviceIdentity = await ystream.transact(async tr => {
     console.log(ystream.clientid, 'setting user identity', userIdentity.ekey)
     tr.objects.user.set('public', publicKey)
     privateKey && tr.objects.user.set('private', privateKey)
+    // 将UserIdentity对象同时塞进users数据库表中
     tr.tables.users.add(userIdentity)
     tr.objects.user.set('identity', userIdentity)
     ystream.user = userIdentity
@@ -40,7 +43,14 @@ export const setUserIdentity = async (ystream, userIdentity, publicKey, privateK
 }
 
 export const createUserIdentity = async ({ extractable = false } = {}) => {
+  // 通过SubtleCrypto.generateKey()的ECDSA非对称加密算法生成公钥和私钥(类型为CryptoKey对象，在内存中进行操作)
+  // See https://developer.mozilla.org/en-US/docs/Web/API/SubtleCrypto/generateKey
+
+  // extractable也是传给SubtleCrypto.generateKey()的，表示是否可以通过SubtleCrypto.exportKey()导出可传输和共享的公钥/私钥
   const { publicKey, privateKey } = await ecdsa.generateKeyPair({ extractable })
+
+  // 导出的公钥为JSON Web Key(JWK)格式，用于在不同系统间传输和共享公钥
+  // 创建自定义的UserIdentity对象, UserIdentity对象封装了公钥
   const userIdentity = new dbtypes.UserIdentity(json.stringify(await ecdsa.exportKeyJwk(publicKey)))
   return { userIdentity, publicKey, privateKey }
 }
@@ -59,14 +69,17 @@ export const createDeviceClaim = async (ystream, deviceIdentity) => {
       tr.objects.user.get('identity')
     ])
     if (privateUserKey == null || user == null) error.unexpectedCase()
+    // 这里返回的是user的私钥，user的JWK公钥，device的JWK公钥
     return { pkey: privateUserKey.key, iss: user.ekey, sub: deviceIdentity.ekey }
   })
   // @todo add type definition to isodb.jwtValue
   // @todo add expiration date `exp`
-  return await jose.encodeJwt(pkey, {
-    iss,
-    iat: time.getUnixTime(),
-    sub
+
+  // 所谓DeviceClaim，就是这个jwt吧
+  return await jose.encodeJwt(pkey /* user的私钥 */, {
+    iss, //  issuer: user的公钥
+    iat: time.getUnixTime(), // issued at: 当前时间戳
+    sub  // subject: device的公钥
   })
 }
 
@@ -152,11 +165,14 @@ export const useDeviceClaim = async (ystream, jwt) => {
    */
   let payload
   const userPublicKey = await ystream.transact(tr => tr.objects.user.get('public'))
+  // jwt是通过user的私钥生成的，所以这里用user的公钥进行验证
   if (userPublicKey != null) {
     payload = await jose.verifyJwt(userPublicKey.key, jwt)
   } else {
     payload = jose.unsafeDecode(jwt)
   }
+
+  // 从jwt payload里提取出来sub(device的公钥)和iss(user的公钥)
   const { payload: { sub, iss } } = payload
   if (userPublicKey == null) {
     // ensure that the user identity is set using the public key of the jwt
@@ -167,6 +183,8 @@ export const useDeviceClaim = async (ystream, jwt) => {
   await ystream.transact(async tr => {
     // Don't call the constructor manually. This is okay only here. Use DeviceClaim.fromJwt
     // instead.
+
+    // DeviceClaim相当于是jwt + device的公钥
     const deviceclaim = new dbtypes.DeviceClaim(jwt, sha256.digest(string.encodeUtf8(sub)))
     tr.objects.device.set('claim', deviceclaim)
     tr.tables.devices.add(deviceclaim)
